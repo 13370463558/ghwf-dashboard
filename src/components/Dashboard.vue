@@ -55,7 +55,11 @@ async function loadRepos(silent = false) {
 }
 
 // ---- 详情数据 ----
+// 打开仓库：写入 hash（#/repo/owner/name），让浏览器返回键/reload 都能回到正确视图
 async function openRepo(repo) {
+  // 记录当前概览滚动位置（返回时恢复）
+  sessionStorage.setItem('dash-scroll', String(window.scrollY));
+  window.location.hash = `#/repo/${encodeURIComponent(repo.full_name)}`;
   selected.value = repo;
   detailData.value = null;
   detailError.value = '';
@@ -70,9 +74,20 @@ async function openRepo(repo) {
 }
 
 function closeDetail() {
+  window.location.hash = '#/';
   selected.value = null;
   detailData.value = null;
   detailError.value = '';
+  // 返回概览后恢复之前的滚动位置（延迟到 DOM 渲染完成）
+  requestAnimationFrame(() => {
+    const saved = sessionStorage.getItem('dash-scroll');
+    if (saved) {
+      window.scrollTo(0, Number(saved));
+      sessionStorage.removeItem('dash-scroll');
+    } else {
+      window.scrollTo(0, 0);
+    }
+  });
 }
 
 // 触发 workflow 后重新拉详情（不重置 selected）
@@ -124,15 +139,56 @@ function onGroupsSaved() {
 }
 
 // ---- 生命周期 ----
+// 从 hash 解析出要展示的仓库名（若无则回概览）
+function repoFromHash() {
+  const m = window.location.hash.match(/^#\/repo\/(.+)$/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
 onMounted(async () => {
   await loadRepos();
   timer = setInterval(() => {
     if (!autoRefresh.value || selected.value) return;
     loadRepos(true);
   }, 60000);
+
+  // 处理浏览器返回键/hash 变化：回到概览或切到对应仓库
+  window.addEventListener('hashchange', handleHashChange);
+  // 初始加载时若 hash 指向某仓库，直接打开该仓库（支持刷新/分享链接）
+  const initial = repoFromHash();
+  if (initial && !selected.value) {
+    const r = repos.value.find((x) => x.full_name === initial);
+    if (r) openRepo(r);
+  }
 });
 
-onBeforeUnmount(() => clearInterval(timer));
+function handleHashChange() {
+  const target = repoFromHash();
+  if (!target && selected.value) {
+    // 回到概览
+    selected.value = null;
+    detailData.value = null;
+    detailError.value = '';
+    requestAnimationFrame(() => {
+      const saved = sessionStorage.getItem('dash-scroll');
+      if (saved) {
+        window.scrollTo(0, Number(saved));
+        sessionStorage.removeItem('dash-scroll');
+      } else {
+        window.scrollTo(0, 0);
+      }
+    });
+  } else if (target && target !== selected.value?.full_name) {
+    // 切到另一个仓库
+    const r = repos.value.find((x) => x.full_name === target);
+    if (r) openRepo(r);
+  }
+}
+
+onBeforeUnmount(() => {
+  clearInterval(timer);
+  window.removeEventListener('hashchange', handleHashChange);
+});
 
 function toggleAuto() {
   autoRefresh.value = !autoRefresh.value;

@@ -10,27 +10,25 @@ function encPath(path) {
 }
 
 // 读取单个 workflow 文件的 cron 表达式列表（去重）+ 是否支持手动触发（workflow_dispatch）
+// 关键：只有"确实没配 schedule"才返回空数组（会写入缓存）;
+//      网络/权限/读取失败（subrequest 超限、403、404 等）必须 throw，防止把失败写进缓存导致 24h 假空
 export async function readWorkflowInfo(env, fullName, workflowPath) {
-  try {
-    const [owner, repo] = fullName.split('/');
-    const data = await gh(env, `/repos/${owner}/${repo}/contents/${encPath(workflowPath)}`);
-    if (!data?.content) return { crons: [], dispatchable: false };
-    // atob 返回 latin1 字节串，必须按 UTF-8 解码（YAML 里可能有中文注释，直接传 atob 结果
-    // 会出现 C1 控制字符，js-yaml 会报 "non-printable characters"）
-    const bytes = Uint8Array.from(atob(data.content), (c) => c.charCodeAt(0));
-    const yamlText = new TextDecoder().decode(bytes);
-    const doc = yamlLoad(yamlText);
-    if (!doc || typeof doc !== 'object') return { crons: [], dispatchable: false };
-    const on = doc.on ?? doc['on'];
-    const schedule = Array.isArray(on?.schedule) ? on.schedule : [];
-    const crons = schedule
-      .map((s) => (s && typeof s.cron === 'string' ? s.cron.trim() : ''))
-      .filter(Boolean);
-    const dispatchable = on?.workflow_dispatch !== undefined;
-    return { crons: [...new Set(crons)], dispatchable };
-  } catch {
-    return { crons: [], dispatchable: false }; // 解析失败（文件缺失/二进制/加密/权限）静默跳过
-  }
+  const [owner, repo] = fullName.split('/');
+  const data = await gh(env, `/repos/${owner}/${repo}/contents/${encPath(workflowPath)}`);
+  if (!data?.content) return { crons: [], dispatchable: false };
+  // atob 返回 latin1 字节串，必须按 UTF-8 解码（YAML 里可能有中文注释，直接传 atob 结果
+  // 会出现 C1 控制字符，js-yaml 会报 "non-printable characters"）
+  const bytes = Uint8Array.from(atob(data.content), (c) => c.charCodeAt(0));
+  const yamlText = new TextDecoder().decode(bytes);
+  const doc = yamlLoad(yamlText);
+  if (!doc || typeof doc !== 'object') return { crons: [], dispatchable: false };
+  const on = doc.on ?? doc['on'];
+  const schedule = Array.isArray(on?.schedule) ? on.schedule : [];
+  const crons = schedule
+    .map((s) => (s && typeof s.cron === 'string' ? s.cron.trim() : ''))
+    .filter(Boolean);
+  const dispatchable = on?.workflow_dispatch !== undefined;
+  return { crons: [...new Set(crons)], dispatchable };
 }
 
 // 解析仓库内所有 active workflow 的信息；workflows 来自 wfdata（id/name/path/state）

@@ -39,17 +39,25 @@ async function enrichRepo(env, repo, wfData) {
   const pushedAt = repo.pushed_at || '';
   const wfUpdated = workflows.map((w) => `${w.id}:${w.updated_at || ''}`).join('|');
   const snapshot = `${pushedAt}|${wfUpdated}`;
-  let cronCache = await cached(env, `cron:v3:${repo.full_name}`, CRON_TTL, async () => {
-    const rows = await fetchCronRows(env, repo.full_name, workflows);
-    return { rows, parsed_at: new Date().toISOString(), snapshot };
-  });
-  if (cronCache.snapshot !== snapshot) {
-    // 检测到仓库有更新，重新解析 cron
-    const rows = await fetchCronRows(env, repo.full_name, workflows);
-    cronCache = { rows, parsed_at: new Date().toISOString(), snapshot };
-    await env.CACHE.put(`cron:v3:${repo.full_name}`, JSON.stringify(cronCache), {
-      expirationTtl: CRON_TTL,
+  // cron 解析失败（subrequest 超限/网络错误）绝不能导致仓库请求失败：
+  // 有旧缓存 → 回退旧缓存；无 → 吞掉错误返回空（本轮 cron 不更新，下轮自动重试）
+  let cronCache = null;
+  try {
+    cronCache = await cached(env, `cron:v3:${repo.full_name}`, CRON_TTL, async () => {
+      const rows = await fetchCronRows(env, repo.full_name, workflows);
+      return { rows, parsed_at: new Date().toISOString(), snapshot };
     });
+    if (cronCache.snapshot !== snapshot) {
+      // 检测到仓库有更新，重新解析 cron
+      const rows = await fetchCronRows(env, repo.full_name, workflows);
+      cronCache = { rows, parsed_at: new Date().toISOString(), snapshot };
+      await env.CACHE.put(`cron:v3:${repo.full_name}`, JSON.stringify(cronCache), {
+        expirationTtl: CRON_TTL,
+      });
+    }
+  } catch {
+    // cron 解析失败：不作为仓库错误上报
+    if (!cronCache) cronCache = { rows: [], parsed_at: null, snapshot };
   }
   const crons = [];
   for (const row of cronCache.rows || []) {
