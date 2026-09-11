@@ -6,4 +6,4 @@ pages_build_output_dir = "dist"
 #   wrangler kv namespace create CACHE
 [[kv_namespaces]]
 binding = "CACHE"
-id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+id = "ba88e42592344c60809eaceb030239a7"
