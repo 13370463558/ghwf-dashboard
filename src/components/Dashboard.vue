@@ -23,6 +23,8 @@ const defaultGroupId = ref(null);
 
 const search = ref('');
 const autoRefresh = ref(true);
+const cronPending = ref(new Set()); // 正在补齐 cron 的仓库
+const cronProgress = ref('');
 
 const showGroupManager = ref(false);
 
@@ -46,12 +48,43 @@ async function loadRepos(silent = false) {
     currentGroup.value = data.group || null;
     groups.value = data.groups || [];
     defaultGroupId.value = data.defaultGroupId || null;
+    // 概览返回后，对 cron 为空的仓库逐个补齐（独立请求，避免批量 subrequest 限制）
+    fillMissingCrons();
   } catch (e) {
     if (e.status !== 401) error.value = e.message;
   } finally {
     loading.value = false;
     refreshing.value = false;
   }
+}
+
+// ---- 补齐缺失的 cron ----
+// /api/repos 因 subrequest 限制可能部分仓库 cron 为空；逐个独立请求 /api/cron 补齐
+async function fillMissingCrons() {
+  const missing = repos.value.filter(
+    (r) => !r.crons || !r.crons.length
+  );
+  if (!missing.length) {
+    cronProgress.value = '';
+    return;
+  }
+  for (const r of missing) {
+    if (cronPending.value.has(r.full_name) || r.archived) continue;
+    cronPending.value.add(r.full_name);
+    cronProgress.value = `正在计算 cron：${r.name}…`;
+    try {
+      const data = await api.cron(r.full_name);
+      // 更新该仓库的 crons（在 repos 数组里替换）
+      const idx = repos.value.findIndex((x) => x.full_name === r.full_name);
+      if (idx >= 0) repos.value[idx].crons = data.crons || [];
+    } catch {
+      /* 单个补齐失败不影响整体，下轮自动重试 */
+    } finally {
+      cronPending.value.delete(r.full_name);
+    }
+  }
+  // 全补齐后允许 60s 轮询自然刷新
+  cronProgress.value = '';
 }
 
 // ---- 详情数据 ----
@@ -231,6 +264,8 @@ function toggleAuto() {
       </div>
 
       <TimeChart :repos="repos" />
+
+      <div v-if="cronProgress" class="cron-progress">⏳ {{ cronProgress }}</div>
 
       <div v-if="error" class="error-box">{{ error }}</div>
       <div v-if="loading" class="loading"><span class="spinner"></span> 正在从 GitHub 拉取数据…</div>

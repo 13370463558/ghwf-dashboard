@@ -6,13 +6,13 @@ import { listAllRepos, gh, mapLimit, runConclusionStats, latestRunByWorkflow } f
 import { cached } from '../lib/cache.js';
 import { getGroups } from '../lib/groups.js';
 import { fetchWorkflowData } from '../lib/wfdata.js';
-import { fetchCronRows, nextRunAt, countScheduledToday, beijingTodayWindow, scheduledTimesToday } from '../lib/crons.js';
+import { getCronCache } from '../lib/cronCache.js';
+import { nextRunAt, countScheduledToday, beijingTodayWindow, scheduledTimesToday } from '../lib/crons.js';
 import { json } from '../lib/http.js';
 
 const LIST_TTL = 600;
 const ALL_TTL = 600;
 const GROUP_TTL = 300;
-const CRON_TTL = 86400; // cron 解析结果缓存 24h，workflow 文件不常改
 const CONCURRENCY = 6;
 
 // 单个仓库的 workflows + runs（来自 lib/wfdata.js：精简字段 + KV 缓存，详情页与概览共享）
@@ -33,32 +33,9 @@ async function enrichRepo(env, repo, wfData) {
   // 仓库级最近一次运行（卡片"上次运行"用）
   const lastRun = runs.length ? runs[0] : null;
 
-  // cron 解析结果：24h TTL 缓存，miss 才读 workflow YAML（GitHub contents API）
-  // 自动失效：仓库 pushed_at 或 workflow updated_at 快照变化（= 仓库有 push）→ 重新解析
-  // （实测 workflows API 的 updated_at 不随文件变化，用 pushed_at 作为检测信号）
-  const pushedAt = repo.pushed_at || '';
-  const wfUpdated = workflows.map((w) => `${w.id}:${w.updated_at || ''}`).join('|');
-  const snapshot = `${pushedAt}|${wfUpdated}`;
-  // cron 解析失败（subrequest 超限/网络错误）绝不能导致仓库请求失败：
-  // 有旧缓存 → 回退旧缓存；无 → 吞掉错误返回空（本轮 cron 不更新，下轮自动重试）
-  let cronCache = null;
-  try {
-    cronCache = await cached(env, `cron:v3:${repo.full_name}`, CRON_TTL, async () => {
-      const rows = await fetchCronRows(env, repo.full_name, workflows);
-      return { rows, parsed_at: new Date().toISOString(), snapshot };
-    });
-    if (cronCache.snapshot !== snapshot) {
-      // 检测到仓库有更新，重新解析 cron
-      const rows = await fetchCronRows(env, repo.full_name, workflows);
-      cronCache = { rows, parsed_at: new Date().toISOString(), snapshot };
-      await env.CACHE.put(`cron:v3:${repo.full_name}`, JSON.stringify(cronCache), {
-        expirationTtl: CRON_TTL,
-      });
-    }
-  } catch {
-    // cron 解析失败：不作为仓库错误上报
-    if (!cronCache) cronCache = { rows: [], parsed_at: null, snapshot };
-  }
+  // cron 解析结果：读 KV 缓存（由 lib/cronCache.js 管理，miss/快照变化才解析）
+  // 失败不写缓存、不抛错，概览先返回已有数据（空也不影响仓库卡片），前端 /api/cron 逐仓库补齐
+  const cronCache = await getCronCache(env, repo.full_name, workflows, repo.pushed_at);
   const crons = [];
   for (const row of cronCache.rows || []) {
     for (const cron of row.crons) {

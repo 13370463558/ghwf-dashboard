@@ -370,6 +370,15 @@ input:focus {
   padding: 4px 10px;
   border-radius: 8px;
 }
+.cron-progress {
+  color: var(--text-muted);
+  font-size: 13px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-muted);
+  padding: 6px 14px;
+  border-radius: 8px;
+  margin-bottom: 14px;
+}
 .rate-bar {
   height: 6px;
   background: var(--neutral-bg);

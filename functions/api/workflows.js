@@ -2,6 +2,7 @@
 // 数据来自 lib/wfdata.js（精简字段 + KV 缓存），每个 workflow 附加 last_run / dispatchable
 import { latestRunByWorkflow } from '../lib/github.js';
 import { fetchWorkflowData } from '../lib/wfdata.js';
+import { getCronCache } from '../lib/cronCache.js';
 import { json } from '../lib/http.js';
 
 export async function onRequestGet(context) {
@@ -15,20 +16,17 @@ export async function onRequestGet(context) {
   try {
     const data = await fetchWorkflowData(env, repo);
 
-    // 每个 workflow 附加最近一次 run + 是否可手动触发（dispatchable，来自 cron 缓存）
-    const lastByWorkflow = latestRunByWorkflow(data.runs || []);
-    const dispatchMap = new Map();
-    if (env.CACHE) {
-      const cronRaw = await env.CACHE.get(`cron:v3:${repo}`).catch(() => null);
-      if (cronRaw) {
-        try {
-          const c = JSON.parse(cronRaw);
-          for (const row of c.rows || []) dispatchMap.set(row.id, !!row.dispatchable);
-        } catch {
-          /* ignore */
-        }
-      }
+    // 读该仓库 cron 缓存（可能触发一次独立解析，配额充足），用于 dispatchable 判定
+    let cronCache = null;
+    try {
+      cronCache = await getCronCache(env, repo, data.workflows || [], '');
+    } catch {
+      cronCache = null;
     }
+    const dispatchMap = new Map((cronCache?.rows || []).map((row) => [row.id, !!row.dispatchable]));
+
+    // 每个 workflow 附加最近一次 run + 是否可手动触发
+    const lastByWorkflow = latestRunByWorkflow(data.runs || []);
     const workflows = (data.workflows || []).map((w) => ({
       ...w,
       dispatchable: !!dispatchMap.get(w.id),

@@ -48,4 +48,5 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ repo, workflowId, ref }),
     }),
+  cron: (repo, force = false) => request(`/api/cron?repo=${encodeURIComponent(repo)}${force ? '&force=1' : ''}`),
 };
