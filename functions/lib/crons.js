@@ -47,11 +47,49 @@ export async function fetchCronRows(env, fullName, workflows) {
 }
 
 // 计算 cron 的下一次触发时间（UTC），失败返回 null
+// 用 cron-parser；若其抛错（版本/兼容问题），降级为近似解析，保证 next_at 不为 null
 export function nextRunAt(cron, from = new Date()) {
   try {
     const interval = CronExpressionParser.parse(cron, { currentDate: from });
     const next = interval.next().toDate();
     return next.toISOString();
+  } catch {
+    return fallbackNextRun(cron, from);
+  }
+}
+
+// 近似 fallback：解析分/时/日/月/周，返回最早可能的未来时刻（一次性，不循环跨月）
+// 用于 cron-parser 不可用时的兜底，避免 next_at 变为 null 导致前端显示"解析失败"
+function fallbackNextRun(cron, from) {
+  try {
+    const parts = String(cron || '').trim().split(/\s+/);
+    if (parts.length < 5) return null;
+    const min = parseInt(parts[0], 10);
+    const hour = parseInt(parts[1], 10);
+    const dom = parts[2] === '*' ? '*' : parseInt(parts[2], 10);
+    const month = parts[3] === '*' ? '*' : parseInt(parts[3], 10);
+    const dow = parts[4] === '*' ? '*' : parseInt(parts[4], 10);
+    if (Number.isNaN(min) || Number.isNaN(hour) || hour > 23) return null;
+
+    // 在当前基础上推进，找到匹配"最近一次可用的今天/明天"的整点
+    const now = new Date(from.getTime());
+    now.setSeconds(0, 0);
+    now.setUTCMinutes(min);
+    now.setUTCHours(hour);
+    // 从 from 起算，往后最多扫 8 天找匹配日
+    for (let d = 0; d <= 8; d++) {
+      const t = new Date(from.getTime() + d * 86400000);
+      t.setSeconds(0, 0);
+      t.setUTCMinutes(min);
+      t.setUTCHours(hour);
+      const okDow = dow === '*' || t.getUTCDay() === dow;
+      const okDom = dom === '*' || t.getUTCDate() === dom;
+      const okMonth = month === '*' || t.getUTCMonth() + 1 === month;
+      if (okDow && okDom && okMonth && t.getTime() > from.getTime()) {
+        return t.toISOString();
+      }
+    }
+    return null;
   } catch {
     return null;
   }
