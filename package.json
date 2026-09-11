@@ -11,8 +11,8 @@
     "deploy": "wrangler pages deploy dist --project-name ghwf-dashboard"
   },
   "dependencies": {
-    "cron-parser": "^4.9.0",
-    "js-yaml": "^4.1.0",
+    "cron-parser": "5.10.0",
+    "js-yaml": "5.4.1",
     "vue": "^3.5.42"
   },
   "devDependencies": {
