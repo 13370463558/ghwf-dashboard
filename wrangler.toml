@@ -1,0 +1,9 @@
+name = "ghwf-dashboard"
+compatibility_date = "2025-03-01"
+pages_build_output_dir = "dist"
+
+# 创建 KV namespace 后把 id 填进来：
+#   wrangler kv namespace create CACHE
+[[kv_namespaces]]
+binding = "CACHE"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
