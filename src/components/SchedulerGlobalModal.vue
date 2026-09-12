@@ -14,8 +14,10 @@ const saving = ref(false);
 onMounted(async () => {
   try {
     const s = await api.schedulerState();
-    interval.value = s.global_interval_minutes ?? 5;
-    repos.value = Object.entries(s.repos || {})
+    // 后端返回 { state: { repos, global_interval_minutes } }；兼容两层取值
+    const st = s?.state || s || {};
+    interval.value = st.global_interval_minutes ?? 5;
+    repos.value = Object.entries(st.repos || {})
       .filter(([, v]) => v.taken_over)
       .map(([name, v]) => ({ name, cron: v.cron, workflow_path: v.workflow_path }));
   } catch (e) {

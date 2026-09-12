@@ -36,8 +36,9 @@ const schedulableWorkflows = computed(() => {
 });
 
 const takeoverState = computed(() => {
-  // 该仓库是否已接管（从 state.repos）
-  return state.value?.repos?.[props.repo.full_name] || null;
+  // 该仓库是否已接管（从 state，后端返回 { state: { repos } }）
+  const st = state.value?.state || state.value || {};
+  return st.repos?.[props.repo.full_name] || null;
 });
 
 onMounted(async () => {
