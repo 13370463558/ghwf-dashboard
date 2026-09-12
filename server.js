@@ -1,6 +1,11 @@
 // 容器版入口：Node HTTP 服务器（无外部依赖，纯 node:http）
 // 复用 functions/lib 与 functions/api 的全部 Fetch-API 处理器，零改动。
 // 启动：PORT 环境变量（默认 8080），存储 data/ 目录（持久）。
+//
+// ★ 强制 UTC：cron 表达式按 GitHub UTC 语义；容器系统时区未知，统一用 UTC 保证调度判断正确。
+//   （北京时间展示由 crons.js 的 beijingTodayWindow 单独按 +8 计算，不受此影响）
+process.env.TZ = 'UTC';
+
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';

@@ -7,6 +7,7 @@ import { cached } from '../lib/cache.js';
 import { getGroups } from '../lib/groups.js';
 import { fetchWorkflowData } from '../lib/wfdata.js';
 import { getCronCache } from '../lib/cronCache.js';
+import { buildEffectiveCrons } from '../lib/effectiveCron.js';
 import { nextRunAt, countScheduledToday, beijingTodayWindow, scheduledTimesToday } from '../lib/crons.js';
 import { json } from '../lib/http.js';
 
@@ -36,17 +37,24 @@ async function enrichRepo(env, repo, wfData) {
   // cron 解析结果：读 KV 缓存（由 lib/cronCache.js 管理，miss/快照变化才解析）
   // 失败不写缓存、不抛错，概览先返回已有数据（空也不影响仓库卡片），前端 /api/cron 逐仓库补齐
   const cronCache = await getCronCache(env, repo.full_name, workflows, repo.pushed_at);
-  const crons = [];
+  const yamlCrons = [];
   for (const row of cronCache.rows || []) {
     for (const cron of row.crons) {
-      crons.push({
+      yamlCrons.push({
         workflow_name: row.name,
         path: row.path, // workflow 文件路径，前端接管/改cron 需要
         cron,
-        next_at: nextRunAt(cron),
+        next_at: null, // 下面统一算
       });
     }
   }
+
+  // 合并接管状态：接管仓库 cron 以调度表为准（显示/统计/调度统一）
+  const { crons: effectiveCrons, takenOver } = await buildEffectiveCrons(env, repo.full_name, yamlCrons);
+  const crons = effectiveCrons.map((c) => ({
+    ...c,
+    next_at: nextRunAt(c.cron),
+  }));
 
   // 北京时间"今天"：已运行次数（runs 落在今天窗口内）+ 计划运行次数（cron 今天应触发次数）
   const { startUtc, endUtc } = beijingTodayWindow();
@@ -103,6 +111,7 @@ async function enrichRepo(env, repo, wfData) {
     workflows: wfList,
     run_stats: stats,
     crons,
+    taken_over: !!takenOver, // 该仓库是否被调度器接管
     today_runs,
     today_scheduled,
     chart: { planned, runs: runTimes, missed },
