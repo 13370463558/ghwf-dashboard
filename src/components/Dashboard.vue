@@ -39,12 +39,13 @@ const takenOverMap = ref({}); // 已接管仓库 full_name -> cron
 let timer = null;
 
 // ---- 概览数据 ----
-async function loadRepos(silent = false) {
+// silent=true 静默自动刷新；force=true 强制绕过后端缓存（手动点刷新按钮）
+async function loadRepos(silent = false, force = false) {
   if (silent) refreshing.value = true;
   else loading.value = true;
   error.value = '';
   try {
-    const data = await api.repos();
+    const data = await api.repos(force);
     repos.value = data.repos || [];
     generatedAt.value = data.generated_at || '';
     scope.value = data.scope || 'all';
@@ -273,7 +274,7 @@ function toggleAuto() {
           <input type="checkbox" :checked="autoRefresh" @change="toggleAuto" />
           自动刷新
         </label>
-        <button :disabled="refreshing || loading" @click="loadRepos(true)">
+        <button :disabled="refreshing || loading" @click="loadRepos(false, true)">
           {{ refreshing ? '刷新中…' : '🔄 刷新' }}
         </button>
         <button @click="openManager">🗂️ 管理分组</button>

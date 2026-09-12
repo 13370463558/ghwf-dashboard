@@ -38,8 +38,8 @@ export const api = {
   login: (password, remember) =>
     request('/api/login', { method: 'POST', body: JSON.stringify({ password, remember }) }),
   logout: () => request('/api/logout', { method: 'POST' }),
-  repos: () => request('/api/repos'),
-  reposAll: () => request('/api/repos?all=1'),
+  repos: (refresh = false) => request(`/api/repos${refresh ? '?refresh=1' : ''}`),
+  reposAll: (refresh = false) => request(`/api/repos?all=1${refresh ? '&refresh=1' : ''}`),
   workflows: (repo) => request(`/api/workflows?repo=${encodeURIComponent(repo)}`),
   groups: () => request('/api/groups'),
   saveGroups: (data) => request('/api/groups', { method: 'PUT', body: JSON.stringify(data) }),

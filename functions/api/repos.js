@@ -13,7 +13,7 @@ import { json } from '../lib/http.js';
 
 const LIST_TTL = 600;
 const ALL_TTL = 600;
-const GROUP_TTL = 300;
+const GROUP_TTL = 60; // 组视图缓存 60 秒，匹配前端 60 秒自动刷新（否则 5 分钟才变一次）
 const CONCURRENCY = 6;
 
 // 单个仓库的 workflows + runs（来自 lib/wfdata.js：精简字段 + KV 缓存，详情页与概览共享）
@@ -131,13 +131,19 @@ export async function onRequestGet(context) {
   const { env, request } = context;
   const url = new URL(request.url);
   const wantAll = url.searchParams.get('all') === '1';
+  const refresh = url.searchParams.get('refresh') === '1';
   const groupCfg = await getGroups(env);
+  const forceRefresh = async (keys_) => {
+    if (!refresh || !env.CACHE) return;
+    for (const k of keys_) await env.CACHE.delete(k).catch(() => {});
+  };
 
   try {
     const list = () => cached(env, 'repos:list', LIST_TTL, () => listAllRepos(env));
 
     // 管理用：全部仓库概览
     if (wantAll) {
+      await forceRefresh(['repos:all:v3']);
       const data = await cached(env, 'repos:all:v3', ALL_TTL, async () => {
         const repos = await list();
         const enriched = await buildEnriched(env, repos);
@@ -156,6 +162,7 @@ export async function onRequestGet(context) {
     const defaultGroup = groupCfg.groups.find((g) => g.id === groupCfg.defaultGroupId) || null;
     if (!defaultGroup) {
       // 未设置默认组：兜底显示全部 + 提示前端引导建组
+      await forceRefresh(['repos:all:v3']);
       const data = await cached(env, 'repos:all:v3', ALL_TTL, async () => {
         const repos = await list();
         const enriched = await buildEnriched(env, repos);
@@ -170,6 +177,7 @@ export async function onRequestGet(context) {
       });
     }
 
+    await forceRefresh([`repos:g:v3:${defaultGroup.id}`]);
     const data = await cached(env, `repos:g:v3:${defaultGroup.id}`, GROUP_TTL, async () => {
       const repos = await list();
       const byName = new Map(repos.map((r) => [r.full_name, r]));
