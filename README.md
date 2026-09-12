@@ -51,8 +51,11 @@ npx wrangler pages dev dist       # 本地运行（自动读 .dev.vars，KV 走�
 ### 容器启动命令
 
 ```bash
-cd /home/container && if [ -f package.json ]; then npm install --dangerously-allow-all-scripts; fi && exec npm start
+cd /home/container && if [ -f package.json ]; then npm install --dangerously-allow-all-scripts; fi && npm run build && exec npm start
 ```
+
+> 这条命令会：装依赖 → 构建前端到 dist/ → 启动 server.js。容器 clone 代码后直接就能跑，无需手动 build。
+> 若每次重启都要 build（慢），可改成 `npm install && exec npm start`（前提是 dist/ 已存在）。推荐首次用带 build 的完整版。
 
 ### 环境变量（在容器 Environment 配置）
 
@@ -68,10 +71,9 @@ cd /home/container && if [ -f package.json ]; then npm install --dangerously-all
 - 分组和缓存自动写到 `/home/container/data/` 目录，**重启不丢**
 - `GITHUB_TOKEN` 环境变量**不要写进代码**，用容器 Environment 注入
 
-### 注意事项
+### 需要注意
 
-- 容器版 cookie 不带 `Secure`（因为走 HTTP 域名），登录正常
-- 首次启动会构建 dist/，之后 `npm start` 直接跑 server.js
+- **Node ≥ 18**（server.js 用了原生 fetch / 顶层 await，Node 18+ 才支持）
 - 无 root 不影响：npm 装到项目本地 node_modules
 
 ### 和你现在 Cloudflare 部署的关系
