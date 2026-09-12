@@ -4,6 +4,7 @@ import RepoCard from './RepoCard.vue';
 import WorkflowList from './WorkflowList.vue';
 import GroupManager from './GroupManager.vue';
 import TimeChart from './TimeChart.vue';
+import SchedulerGlobalModal from './SchedulerGlobalModal.vue';
 import { isBeijingToday } from '../lib/format.js';
 import { api } from '../lib/api.js';
 
@@ -27,11 +28,13 @@ const cronPending = ref(new Set()); // 正在补齐 cron 的仓库
 const cronProgress = ref('');
 
 const showGroupManager = ref(false);
+const showSchedulerGlobal = ref(false);
 
 const selected = ref(null); // 当前查看的仓库
 const detailData = ref(null);
 const detailLoading = ref(false);
 const detailError = ref('');
+const takenOverMap = ref({}); // 已接管仓库 full_name -> cron
 
 let timer = null;
 
@@ -50,6 +53,8 @@ async function loadRepos(silent = false) {
     defaultGroupId.value = data.defaultGroupId || null;
     // 概览返回后，对 cron 为空的仓库逐个补齐（独立请求，避免批量 subrequest 限制）
     fillMissingCrons();
+    // 加载调度状态（已接管仓库）
+    loadTakenOver();
   } catch (e) {
     if (e.status !== 401) error.value = e.message;
   } finally {
@@ -85,6 +90,20 @@ async function fillMissingCrons() {
   }
   // 全补齐后允许 60s 轮询自然刷新
   cronProgress.value = '';
+}
+
+// ---- 加载调度状态（已接管仓库） ----
+async function loadTakenOver() {
+  try {
+    const s = await api.schedulerState();
+    const map = {};
+    for (const [name, v] of Object.entries(s.state?.repos || {})) {
+      if (v.taken_over) map[name] = v.cron;
+    }
+    takenOverMap.value = map;
+  } catch {
+    /* 忽略，非关键 */
+  }
 }
 
 // ---- 详情数据 ----
@@ -166,6 +185,19 @@ function openManager() {
   showGroupManager.value = true;
 }
 
+function openSchedulerGlobal() {
+  showSchedulerGlobal.value = true;
+}
+
+function onSchedulerChanged() {
+  showSchedulerGlobal.value = false;
+  loadRepos(); // 周期/接管状态变了，刷新
+}
+
+function onRepoSchedulerChanged() {
+  loadTakenOver(); // 单个仓库接管状态变了，只更新徽章
+}
+
 function onGroupsSaved() {
   showGroupManager.value = false;
   loadRepos(); // 组变了，立即刷新主视图
@@ -245,6 +277,7 @@ function toggleAuto() {
           {{ refreshing ? '刷新中…' : '🔄 刷新' }}
         </button>
         <button @click="openManager">🗂️ 管理分组</button>
+        <button @click="openSchedulerGlobal">⚙️ 调度设置</button>
         <button @click="emit('logout')">退出登录</button>
       </div>
     </header>
@@ -273,7 +306,7 @@ function toggleAuto() {
         {{ repos.length ? '没有匹配的仓库，试试调整筛选条件' : scope === 'default' ? '默认组里还没有仓库，去「管理分组」添加' : '未获取到任何仓库，请检查 GITHUB_TOKEN 权限' }}
       </div>
       <div v-else class="repo-grid">
-        <RepoCard v-for="r in filteredRepos" :key="r.full_name" :repo="r" @open="openRepo" />
+        <RepoCard v-for="r in filteredRepos" :key="r.full_name" :repo="r" :taken-over="!!takenOverMap[r.full_name]" @open="openRepo" @scheduler-changed="onRepoSchedulerChanged" />
       </div>
     </template>
 
@@ -297,5 +330,6 @@ function toggleAuto() {
     </footer>
 
     <GroupManager v-if="showGroupManager" @saved="onGroupsSaved" @close="showGroupManager = false" />
+    <SchedulerGlobalModal v-if="showSchedulerGlobal" @changed="onSchedulerChanged" @close="showSchedulerGlobal = false" />
   </div>
 </template>

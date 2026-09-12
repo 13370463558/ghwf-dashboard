@@ -12,7 +12,6 @@ const emit = defineEmits(['close', 'changed']);
 const loading = ref(true);
 const error = ref('');
 const state = ref(null); // scheduler state（全量）
-const globalInterval = ref(5);
 
 const selectedWorkflow = ref(''); // 选中的 workflow_path
 const cronInput = ref('');
@@ -43,7 +42,6 @@ const takeoverState = computed(() => {
 onMounted(async () => {
   try {
     state.value = await api.schedulerState();
-    globalInterval.value = state.value.global_interval_minutes ?? 5;
     // 若已接管，预填 cron 和 workflow
     const ts = takeoverState.value;
     if (ts) {
@@ -123,17 +121,6 @@ async function doSetCron() {
   } catch (e) { error.value = e.message; } finally { saving.value = false; }
 }
 
-// 设检查周期
-async function saveInterval() {
-  const n = Number(globalInterval.value);
-  if (Number.isNaN(n) || n < 1 || n > 60) { error.value = '间隔需在 1-60 分钟'; return; }
-  saving.value = true; error.value = '';
-  try {
-    await api.scheduler({ job: 'setinterval', interval: n });
-    emit('changed');
-  } catch (e) { error.value = e.message; } finally { saving.value = false; }
-}
-
 const isTakenOver = computed(() => !!takeoverState.value);
 </script>
 
@@ -186,15 +173,6 @@ const isTakenOver = computed(() => !!takeoverState.value);
             <button class="btn-primary" :disabled="saving || !schedulableWorkflows.length" @click="doTakeover">🚀 接管并启用调度器</button>
             <button class="btn-primary" :disabled="saving" @click="doSetCron">✏️ 修改 YAML 中 cron</button>
           </template>
-        </div>
-
-        <!-- 检查周期 -->
-        <div class="sched-field">
-          <label>调度器检查周期（分钟，1-60，默认 5）</label>
-          <div class="interval-row">
-            <input v-model.number="globalInterval" class="sched-input short" type="number" min="1" max="60" />
-            <button class="btn-primary" :disabled="saving" @click="saveInterval">保存周期</button>
-          </div>
         </div>
       </div>
     </div>

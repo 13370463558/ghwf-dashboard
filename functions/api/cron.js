@@ -34,7 +34,7 @@ export async function onRequestGet(context) {
     for (const row of rows) {
       dispatchMap.set(row.id, !!row.dispatchable);
       for (const cron of row.crons) {
-        crons.push({ workflow_name: row.name, cron, next_at: nextRunAt(cron) });
+        crons.push({ workflow_name: row.name, path: row.path, cron, next_at: nextRunAt(cron) });
       }
     }
 

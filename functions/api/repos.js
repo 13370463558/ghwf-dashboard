@@ -41,6 +41,7 @@ async function enrichRepo(env, repo, wfData) {
     for (const cron of row.crons) {
       crons.push({
         workflow_name: row.name,
+        path: row.path, // workflow 文件路径，前端接管/改cron 需要
         cron,
         next_at: nextRunAt(cron),
       });

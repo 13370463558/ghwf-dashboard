@@ -5,16 +5,16 @@ import SchedulerModal from './SchedulerModal.vue';
 
 const props = defineProps({
   repo: { type: Object, required: true },
+  takenOver: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['open']);
+const emit = defineEmits(['open', 'scheduler-changed']);
 
 const RUNNING = ['in_progress', 'queued', 'waiting', 'requested', 'pending'];
 const showScheduler = ref(false);
-const takenOver = ref(false);
 
 async function onSchedulerChanged() {
-  emit('open', props.repo); // 触发数据刷新（借用 open 事件重新拉）
+  emit('scheduler-changed'); // 通知 Dashboard 刷新接管徽章
 }
 
 // 上次运行状态：成功绿 / 失败红 / 进行中黄 / 其他灰
@@ -46,7 +46,7 @@ const missedText = computed(() =>
     <div class="repo-head">
       <div class="repo-name">{{ repo.name }}</div>
       <div class="repo-tags">
-        <button v-if="showScheduler" class="cp-btn-taken" @click.stop>⚡ 已接管</button>
+        <button v-if="takenOver" class="cp-btn-taken" @click.stop>⚡ 已接管</button>
         <button class="cp-btn" @click.stop="showScheduler = true">⚙️ 调度</button>
         <a class="gh-link" :href="repo.html_url" target="_blank" rel="noopener" title="打开 GitHub 仓库" @click.stop>GitHub ↗</a>
         <span v-if="repo.private" class="badge neutral">私有</span>
