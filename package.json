@@ -3,12 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "GitHub Actions workflow monitor dashboard on Cloudflare Pages",
+  "description": "GitHub Actions workflow monitor dashboard (Cloudflare Pages + self-hosted container)",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "wrangler pages deploy dist --project-name ghwf-dashboard"
+    "start": "node server.js",
+    "deploy:cf": "wrangler pages deploy dist --project-name ghwf-dashboard"
   },
   "dependencies": {
     "cron-parser": "5.10.0",

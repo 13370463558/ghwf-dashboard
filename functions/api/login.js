@@ -49,9 +49,12 @@ export async function onRequestPost(context) {
   if (env.CACHE) await env.CACHE.delete(rateKey);
 
   const token = await createSession(env.AUTH_SECRET, !!remember);
+  // 容器环境（env.IS_LOCAL=true）或本地 localhost 都视为非 HTTPS，cookie 不加 Secure
   const isLocal =
-    request.url.startsWith('http://') &&
-    (request.url.includes('localhost') || request.url.includes('127.0.0.1') || request.url.includes('0.0.0.0'));
+    env.IS_LOCAL === true ||
+    env.IS_LOCAL === 'true' ||
+    (request.url.startsWith('http://') &&
+      (request.url.includes('localhost') || request.url.includes('127.0.0.1') || request.url.includes('0.0.0.0')));
 
   return new Response(JSON.stringify({ ok: true }), {
     status: 200,

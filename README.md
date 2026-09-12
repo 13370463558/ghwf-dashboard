@@ -44,6 +44,46 @@ npx wrangler pages dev dist       # 本地运行（自动读 .dev.vars，KV 走�
 
 ---
 
+## 🐳 部署到自己的 Node 容器（可选）
+
+如果你有支持 Node 启动脚本的容器（如 katabump 那种：/home/container 持久目录 + npm start），可以自托管，不需要 Cloudflare。
+
+### 容器启动命令
+
+```bash
+cd /home/container && if [ -f package.json ]; then npm install --dangerously-allow-all-scripts; fi && exec npm start
+```
+
+### 环境变量（在容器 Environment 配置）
+
+| 变量 | 说明 |
+|---|---|
+| `GITHUB_TOKEN` | GitHub classic token（最小权限） |
+| `APP_PASSWORD` | 登录密码 |
+| `AUTH_SECRET` | cookie 签名密钥 |
+| `PORT` | 端口（容器一般自动注入；没有则默认 8080） |
+
+### 数据持久化
+
+- 分组和缓存自动写到 `/home/container/data/` 目录，**重启不丢**
+- `GITHUB_TOKEN` 环境变量**不要写进代码**，用容器 Environment 注入
+
+### 注意事项
+
+- 容器版 cookie 不带 `Secure`（因为走 HTTP 域名），登录正常
+- 首次启动会构建 dist/，之后 `npm start` 直接跑 server.js
+- 无 root 不影响：npm 装到项目本地 node_modules
+
+### 和你现在 Cloudflare 部署的关系
+
+同一套代码，两个运行方式二选一：
+- **CF Pages**：`functions/` 自动路由，无需 server.js
+- **自托管容器**：`server.js` 作为入口，复用 functions/lib 逻辑，存储走 data/ 文件
+
+两个可以并存，代码一致。容器还方便以后加准点触发（node-cron）。
+
+---
+
 ## 🚀 部署到 Cloudflare Pages（手动）
 
 > 选 Pages 而非 Workers，架构是 `functions/` 目录形式。
