@@ -8,6 +8,7 @@ import path from 'node:path';
 import process from 'node:process';
 
 import { createKv } from './server/kv.js';
+import { createScheduler } from './server/scheduler.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -198,6 +199,10 @@ async function serveStatic(req, res, urlPath) {
 // ---- 启动 ----
 await kv.init();
 await ensureDist(); // 确保 dist 存在（缺失则尝试构建）
+
+// 启动调度器（容器常驻，到点触发被接管的 workflow）
+const scheduler = createScheduler(env, kv).start();
+console.log('Scheduler started');
 
 const server = createServer(async (req, res) => {
   try {

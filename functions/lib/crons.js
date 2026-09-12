@@ -128,7 +128,23 @@ export function scheduledTimesToday(crons, now = new Date()) {
   return [...new Set(times)].sort((a, b) => a - b);
 }
 
-// 一组 cron 表达式在"今天"（北京时间）计划触发的总次数
+// 计算 cron 在未来 N 次触发时间（北京时间 ISO），返回数组。非法 cron 返回 null
+export function nextRunsAt(cron, count = 5, from = new Date()) {
+  try {
+    const it = CronExpressionParser.parse(cron, { currentDate: from });
+    const out = [];
+    for (let i = 0; i < count; i++) {
+      const next = it.next().toDate();
+      // 北京时间展示
+      out.push(next.toISOString());
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+// 一组 cron 表达式在"今天"（北京时间）的计划触发数量总和（未来 checkTimeMin 分钟内的也算到此轮）
 export function countScheduledToday(crons, now = new Date()) {
   const { startUtc, endUtc } = beijingTodayWindow(now);
   let total = 0;

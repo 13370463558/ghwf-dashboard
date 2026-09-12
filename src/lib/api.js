@@ -49,4 +49,7 @@ export const api = {
       body: JSON.stringify({ repo, workflowId, ref }),
     }),
   cron: (repo, force = false) => request(`/api/cron?repo=${encodeURIComponent(repo)}${force ? '&force=1' : ''}`),
+  schedulerState: () => request('/api/scheduler'),
+  scheduler: (data) => request('/api/scheduler', { method: 'POST', body: JSON.stringify(data) }),
+  cronPreview: (cron) => request(`/api/cronPreview?cron=${encodeURIComponent(cron)}`),
 };
