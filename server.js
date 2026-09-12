@@ -10,10 +10,34 @@ import process from 'node:process';
 import { createKv } from './server/kv.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DIST_DIR = path.join(__dirname, 'dist');
+const DIST_DIR = process.env.DIST_DIR || path.join(__dirname, 'dist');
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
-
 const PORT = Number(process.env.PORT || 8080);
+
+// ---- 启动前自检 dist：若不存在则尝试构建（仅当 vite 可用时）----
+async function ensureDist() {
+  try {
+    const s = await stat(path.join(DIST_DIR, 'index.html'));
+    if (s.isFile()) return true; // dist 已存在，直接用
+  } catch {
+    /* 不存在，需构建 */
+  }
+  // dist 缺失：尝试 npm run build（若环境有 vite/wrangler）。静默失败不阻塞启动。
+  try {
+    console.log('dist 缺失，尝试构建前端…');
+    const { spawnSync } = await import('node:child_process');
+    const r = spawnSync('npx', ['vite', 'build'], { cwd: __dirname, stdio: 'inherit' });
+    if (r.status === 0) {
+      console.log('前端构建成功');
+      return true;
+    }
+    console.log('前端构建失败（可能未安装 vite），将无法提供静态页面');
+    return false;
+  } catch (e) {
+    console.log('前端构建异常:', e.message);
+    return false;
+  }
+}
 
 // ---- 环境注入：把容器环境变量变成 handlers 需要的 env 对象 ----
 const kv = createKv(DATA_DIR);
@@ -147,6 +171,7 @@ async function serveStatic(req, res, urlPath) {
 
 // ---- 启动 ----
 await kv.init();
+await ensureDist(); // 确保 dist 存在（缺失则尝试构建）
 
 const server = createServer(async (req, res) => {
   try {
