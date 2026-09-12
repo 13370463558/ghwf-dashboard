@@ -166,15 +166,19 @@ export function createScheduler(env, kv) {
 
         const workflowId = await findWorkflowId(repo, cfg.workflow_path);
         if (!workflowId) {
-          console.log(`[scheduler] ${repo} 找不到 workflow (${cfg.workflow_path})，跳过`);
+          // 找不到 workflow（wfdata 缓存缺失/路径不符）：更新 last_trigger 避免每 tick 重试风暴
+          // 记录原因供诊断，等待 wfdata 缓存刷新后下次 cron 周期再试
+          console.log(`[scheduler] ${repo} 找不到 workflow (${cfg.workflow_path})，标记本轮跳过`);
+          cfg.last_trigger = now;
+          cfg.last_result = 'not_found';
+          cfg.last_attempt_at = new Date(now).toISOString();
+          state.repos[repo] = cfg;
           continue;
         }
 
         const result = await triggerWithRetry(repo, cfg, workflowId);
         // 记录 last_trigger。成功或最终失败都记（避免每 tick 疯狂重试同一 cron）。
-        // 失败时会发 TG 通知 + 打印，若想人工可 在全局设置/或取消接管。
         cfg.last_trigger = now;
-        // 保留失败信息供诊断
         cfg.last_result = result.ok ? 'success' : 'failed';
         cfg.last_attempt_at = new Date(now).toISOString();
         state.repos[repo] = cfg;

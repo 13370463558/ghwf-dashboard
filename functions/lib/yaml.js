@@ -46,7 +46,11 @@ export async function writeWorkflowFile(env, fullName, path, content, sha, messa
 }
 
 // 行级操作 schedule 区块
-// 策略：找到 `schedule:` 行，记录其缩进；在其后的、缩进大于 schedule 缩进的行中找 `- cron:` 行处理
+// 策略：
+//   接管(takeover)：注释整个 `schedule:` 块（schedule: 行 + 其下所有行），使 on 下只留 workflow_dispatch，
+//                    避免留下空 `schedule:` 导致 GitHub 解析报错（422 "Unexpected value ''"）
+//   取消接管(untakeover)：取消注释整个 schedule 块
+//   改cron(setcron)：只改 schedule 内 cron 的值（未接管时）
 export function operateSchedule(content, action, newCron) {
   const lines = content.split(/\r?\n/);
   const out = [];
@@ -58,11 +62,17 @@ export function operateSchedule(content, action, newCron) {
     const indent = line.match(/^\s*/)[0].length;
     const trimmed = line.trim();
 
-    if (/^schedule\s*:/.test(trimmed)) {
+    // 检测 schedule: 行（未注释状态）
+    const isScheduleHeader = /^schedule\s*:/.test(trimmed) && !trimmed.startsWith('#');
+    // 检测已注释的 schedule: 行（取消接管要还原）
+    const isScheduleHeaderComment = /^#\s*schedule\s*:/.test(trimmed);
+
+    if (isScheduleHeader || isScheduleHeaderComment) {
+      const wasComment = trimmed.startsWith('#');
       // 进入 schedule 区块
       inSchedule = true;
       scheduleIndent = indent;
-      out.push(line);
+      out.push(applyScheduleLine(line, wasComment));
       continue;
     }
 
@@ -78,12 +88,8 @@ export function operateSchedule(content, action, newCron) {
 
     if (inSchedule && isCronLine && !line.trim().startsWith('#')) {
       if (action === 'takeover') {
-        // 注释这个 cron 行（保留缩进，行首加 # ）
+        // 注释这个 cron 行
         out.push(line.replace(/^(\s*)/, '$1# '));
-        continue;
-      } else if (action === 'untakeover') {
-        // 本不应出现在这里，但若存在未注释的 cron 保持原样
-        out.push(line);
         continue;
       } else if (action === 'setcron') {
         // 改值
@@ -92,24 +98,42 @@ export function operateSchedule(content, action, newCron) {
           (_m, prefix) => `${prefix}'${newCron}'`
         ));
         continue;
-      }
-    } else if (inSchedule && isCommentCron) {
-      if (action === 'untakeover') {
-        // 取消注释：去掉 缩进 后的 # 和一个空格
-        out.push(line.replace(/^(\s*)#\s?/, '$1'));
+      } else if (action === 'untakeover') {
+        // 已是未注释 cron（理论上不该），保持
+        out.push(line);
         continue;
-      } else if (action === 'takeover') {
-        // 已注释的保持注释
+      }
+    } else if (inSchedule && (isCommentCron || (/^#\s+-/.test(trimmed)))) {
+      // schedule 内的注释行（原 cron 注释或其它注释），取消接管时还原非 schedule 头行
+      if (action === 'takeover') {
+        // 已注释保持注释
         out.push(line);
         continue;
       } else if (action === 'setcron') {
-        // 未接管不该有注释 cron；保持
+        // schedule 内的注释 cron 在 setcron 时保持（接管时 setcron 走调度表，不会到 YAML）
         out.push(line);
+        continue;
+      }
+      // untakeover：对非 schedule-header 的注释行取消注释（还原 cron）
+      if (action === 'untakeover' && isCommentCron) {
+        out.push(line.replace(/^(\s*)#\s?/, '$1'));
         continue;
       }
     }
 
     out.push(line);
+  }
+
+  function applyScheduleLine(line, alreadyComment) {
+    if (action === 'takeover' && !alreadyComment) {
+      // 注释 schedule: 行
+      return line.replace(/^(\s*)/, '$1# ');
+    }
+    if (action === 'untakeover' && alreadyComment) {
+      // 还原 schedule: 行
+      return line.replace(/^(\s*)#\s?/, '$1');
+    }
+    return line; // setcron 时 schedule 行保持原样
   }
 
   return out.join('\n');
