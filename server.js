@@ -10,6 +10,32 @@ import process from 'node:process';
 import { createKv } from './server/kv.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// ---- 加载 .env 文件（容器面板可能无法设置环境变量）----
+// 若 /home/container/.env 存在，读出来注入 process.env（已存在的环境变量优先，不覆盖）
+async function loadDotEnv() {
+  const envPath = path.join(__dirname, '.env');
+  try {
+    const raw = await readFile(envPath, 'utf8');
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eq = trimmed.indexOf('=');
+      if (eq === -1) continue;
+      const key = trimmed.slice(0, eq).trim();
+      let val = trimmed.slice(eq + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      if (key && !(key in process.env)) process.env[key] = val;
+    }
+  } catch {
+    /* .env 不存在，静默 */
+  }
+}
+
+await loadDotEnv();
+
 const DIST_DIR = process.env.DIST_DIR || path.join(__dirname, 'dist');
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const PORT = Number(process.env.PORT || 8080);
