@@ -18,6 +18,7 @@ const cronInput = ref('');
 const preview = ref([]);
 const previewLoading = ref(false);
 const saving = ref(false);
+const previewError = ref(''); // cron 预览的合法性问题（不混入全局 error）
 
 // 该仓库带 schedule 的 workflow（从 repo.crons 关联 workflow path）
 const schedulableWorkflows = computed(() => {
@@ -60,19 +61,34 @@ onMounted(async () => {
 });
 
 async function doPreview() {
-  if (!cronInput.value.trim()) { preview.value = []; return; }
+  const cron = cronInput.value.trim();
+  // cron 需 5 段，段之间用空格；若不足 5 段（输入中）则不显示，等完整
+  const parts = cron.split(/\s+/).filter(Boolean);
+  if (parts.length < 5) {
+    preview.value = [];
+    previewError.value = '';
+    return;
+  }
   previewLoading.value = true;
+  previewError.value = '';
   try {
-    const r = await api.cronPreview(cronInput.value.trim());
-    if (r.ok) preview.value = r.times;
-    else { preview.value = []; error.value = r.error; }
+    const r = await api.cronPreview(cron);
+    if (r.ok) {
+      preview.value = r.times;
+      previewError.value = '';
+    } else {
+      preview.value = [];
+      previewError.value = r.error || 'cron 表达式不合法';
+    }
   } catch (e) {
-    preview.value = []; error.value = e.message;
+    preview.value = [];
+    previewError.value = e.message;
   } finally {
     previewLoading.value = false;
   }
 }
-watch(cronInput, () => { error.value = ''; preview.value = []; });
+// 输入变化实时校验+预览（cron 完整时才显示）
+watch(cronInput, () => { error.value = ''; doPreview(); });
 
 // 接管
 async function doTakeover() {
@@ -85,6 +101,8 @@ async function doTakeover() {
       job: 'takeover', repo: props.repo.full_name,
       workflow_path: wf.path, cron: cronInput.value.trim(),
     });
+    // 本地更新 cron 显示为新接管值
+    applyCronUpdate(cronInput.value.trim());
     emit('changed');
     emit('close');
   } catch (e) { error.value = e.message; } finally { saving.value = false; }
@@ -116,9 +134,26 @@ async function doSetCron() {
       workflow_path: ts ? ts.workflow_path : (schedulableWorkflows.value.find((w) => w.path === selectedWorkflow.value)?.path || ''),
       cron: cronInput.value.trim(),
     });
+    // 成功：本地立即更新 crons（不刷新整个页面）
+    applyCronUpdate(cronInput.value.trim());
     emit('changed');
     emit('close');
   } catch (e) { error.value = e.message; } finally { saving.value = false; }
+}
+
+// 本地更新 repo.crons 里对应 workflow 的 cron 值（立即反映到卡片，无需刷新）
+function applyCronUpdate(newCron) {
+  const targetPath = takeoverState.value?.workflow_path || selectedWorkflow.value;
+  if (!props.repo || !Array.isArray(props.repo.crons)) return;
+  // 更新匹配该 workflow_path 的 cron
+  const idx = props.repo.crons.findIndex((c) => c.path === targetPath);
+  if (idx >= 0) {
+    // 直接改该 cron 条目
+    props.repo.crons[idx].cron = newCron;
+  } else if (props.repo.crons.length === 1) {
+    // 单 cron 兜底
+    props.repo.crons[0].cron = newCron;
+  }
 }
 
 const isTakenOver = computed(() => !!takeoverState.value);
@@ -154,14 +189,17 @@ const isTakenOver = computed(() => !!takeoverState.value);
         <!-- cron 输入 -->
         <div class="sched-field">
           <label>cron 表达式（分 时 日 月 周）</label>
-          <input v-model="cronInput" class="sched-input" type="text" placeholder="如 0 0 * * *" @blur="doPreview" />
+          <input v-model="cronInput" class="sched-input" type="text" placeholder="如 0 0 * * *" />
         </div>
 
-        <!-- 未来5次预览 -->
-        <div v-if="preview.length" class="sched-preview">
-          <div class="preview-title">未来 5 次运行时间：</div>
+        <!-- cron 合法性 + 未来5次预览（实时，输入完整才显示）-->
+        <div v-if="previewLoading" class="sched-preview">⏳ 校验中…</div>
+        <div v-else-if="previewError" class="sched-preview invalid">❌ {{ previewError }}</div>
+        <div v-else-if="preview.length" class="sched-preview">
+          <div class="preview-title">✅ 合法 · 未来 5 次运行时间：</div>
           <div v-for="(t, i) in preview" :key="i" class="preview-row">🕐 北京时间 {{ beijingNext(t) }}</div>
         </div>
+        <div v-else class="sched-preview dim">输入完整的 5 段 cron 后显示校验结果</div>
 
         <!-- 操作按钮 -->
         <div class="sched-actions">
@@ -191,6 +229,8 @@ const isTakenOver = computed(() => !!takeoverState.value);
 .sched-select { padding: 8px 10px; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 6px; color: var(--text); }
 .sched-hint { color: var(--text-faint); font-size: 12px; }
 .sched-preview { background: var(--bg-elev-2); border-radius: 8px; padding: 10px 12px; }
+.sched-preview.invalid { border: 1px solid rgba(248,81,73,.4); color: var(--failure); }
+.sched-preview.dim { color: var(--text-faint); font-size: 12px; }
 .preview-title { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
 .preview-row { font-size: 13px; color: var(--accent); padding: 2px 0; }
 .sched-actions { display: flex; gap: 10px; flex-wrap: wrap; }

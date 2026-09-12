@@ -50,19 +50,20 @@ export async function onRequestPost(context) {
   const body = await request.json().catch(() => ({}));
   const { job, repo, workflow_path, cron, interval } = body || {};
 
-  if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) {
-    return json({ error: 'repo 格式应为 owner/name' }, 400);
-  }
-
   const state = await getState(env);
 
-  // 设全局检查周期
+  // 设全局检查周期（不需要 repo）
   if (job === 'setinterval') {
     const n = Number(interval);
     if (Number.isNaN(n) || n < 1 || n > 60) return json({ error: '间隔必须是 1-60 分钟' }, 400);
     state.global_interval_minutes = n;
     await saveState(env, state);
     return json({ ok: true, global_interval_minutes: n });
+  }
+
+  // 其余 job 都需要 repo
+  if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo)) {
+    return json({ error: 'repo 格式应为 owner/name' }, 400);
   }
 
   // 接管 / 取消接管 / 改 cron 都需要 workflow_path
