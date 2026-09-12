@@ -69,7 +69,12 @@ export function createKv(dataDir) {
     async put(key, value, opts = {}) {
       const exp = opts.expirationTtl ? Date.now() + opts.expirationTtl * 1000 : 0;
       mem.set(key, { value, exp });
-      scheduleSync(); // 所有 key 变更都触发落盘（去抖）
+      // 关键持久 key（调度状态、分组）立即落盘，防止 10 秒去抖窗口内重启丢失
+      if (key === 'scheduler:state' || key === 'groups') {
+        await persist();
+      } else {
+        scheduleSync(); // 其余缓存类 key 去抖落盘
+      }
     },
     async delete(key) {
       mem.delete(key);
