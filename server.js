@@ -205,6 +205,11 @@ await ensureDist(); // 确保 dist 存在（缺失则尝试构建）
 const scheduler = createScheduler(env, kv).start();
 console.log('Scheduler started');
 
+// 启动哪吒探针（若 .npm/nezha_agent 配置存在）
+const { ensureNezha } = await import('./server/nezha.js');
+await ensureNezha(env);
+console.log('Nezha check done');
+
 const server = createServer(async (req, res) => {
   try {
     // 1. 中间件：校验会话（放行 /api/login 与静态）
