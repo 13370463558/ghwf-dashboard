@@ -69,6 +69,7 @@ async function ensureDist() {
 // ---- 环境注入：把容器环境变量变成 handlers 需要的 env 对象 ----
 const kv = createKv(DATA_DIR);
 const env = {
+  ...process.env, // 暴露全部环境变量（含 SCHED_*/TG_*，供调度器读取）
   GITHUB_TOKEN: process.env.GITHUB_TOKEN || '',
   APP_PASSWORD: process.env.APP_PASSWORD || '',
   AUTH_SECRET: process.env.AUTH_SECRET || '',

@@ -1,33 +1,57 @@
 // 容器版 KV：替换 Cloudflare KV 的针孔适配
-// - 缓存类 key（repos:/wfdata:/cron:/rate:）：放内存 Map，重启重建（数据本身是缓存，重新拉 GitHub 即可）
-// - groups 配置（用户增删改的持久数据）：落盘 data/groups.json，重启不丢
+// 所有 key 都持久化到 data/kv.json（内存 + 磁盘同步），重启不丢。
+// 缓存类 key（repos:/wfdata:/cron:/rate:）也落盘——重启后读旧值，miss 再由 GitHub 重建，无害且少一次冷启动拉取。
+// 调度表 scheduler:state 必须持久化（last_trigger 一旦丢失，重启后会重复触发同一 cron）。
 import { promises as fs } from 'fs';
 import path from 'path';
 
 export function createKv(dataDir) {
   const mem = new Map(); // key -> { value: string, exp: number }
-  const groupsFile = path.join(dataDir, 'groups.json');
-  let groupsDirty = false;
+  const kvFile = path.join(dataDir, 'kv.json'); // 现在所有 key 都存这一个文件
+  const MAX_SYNC_SECONDS = 10; // 最多每 10 秒批量写盘一次（防频繁写盘）
+  let dirty = false;
+  let syncTimer = null;
 
-  // 每隔 1 分钟把 groups 落盘一次（防频繁写盘）
-  setInterval(() => {
-    if (groupsDirty) flushGroups().then(() => (groupsDirty = false)).catch(() => {});
-  }, 60000);
-
-  async function flushGroups() {
-    const val = mem.get('groups');
-    await fs.mkdir(dataDir, { recursive: true });
-    await fs.writeFile(groupsFile, val?.value ?? '{"groups":[],"defaultGroupId":null}', 'utf8');
+  // 批量写盘（去抖）
+  function scheduleSync() {
+    dirty = true;
+    if (syncTimer) return;
+    syncTimer = setTimeout(async () => {
+      syncTimer = null;
+      if (!dirty) return;
+      dirty = false;
+      await persist();
+    }, MAX_SYNC_SECONDS * 1000);
   }
 
-  // 启动时若有持久 groups 文件则加载
+  async function persist() {
+    try {
+      const obj = {};
+      for (const [k, v] of mem) {
+        if (v.exp && v.exp < Date.now()) continue; // 跳过已过期
+        obj[k] = v;
+      }
+      await fs.mkdir(dataDir, { recursive: true });
+      await fs.writeFile(kvFile, JSON.stringify(obj), 'utf8');
+    } catch (e) {
+      // 写盘失败不致命，内存仍可用
+      dirty = true; // 标记待重试
+    }
+  }
+
+  // 启动时加载持久文件
   async function init() {
     try {
-      const raw = await fs.readFile(groupsFile, 'utf8');
-      mem.set('groups', { value: raw, exp: 0 }); // 不设过期，永久
+      const raw = await fs.readFile(kvFile, 'utf8');
+      const obj = JSON.parse(raw);
+      for (const [k, v] of Object.entries(obj)) {
+        if (v?.value !== undefined) mem.set(k, { value: v.value, exp: v.exp || 0 });
+      }
     } catch {
-      /* 无文件，用默认空 */
+      /* 无文件或损坏，用空 */
     }
+    // 兜底：定时强制清理过期 + 确保持久
+    setInterval(scheduleSync, 60000);
   }
 
   return {
@@ -37,6 +61,7 @@ export function createKv(dataDir) {
       if (!v) return null;
       if (v.exp && v.exp < Date.now()) {
         mem.delete(key);
+        dirty = true;
         return null;
       }
       return v.value;
@@ -44,17 +69,11 @@ export function createKv(dataDir) {
     async put(key, value, opts = {}) {
       const exp = opts.expirationTtl ? Date.now() + opts.expirationTtl * 1000 : 0;
       mem.set(key, { value, exp });
-      if (key === 'groups') groupsDirty = true;
-      if (key === 'groups' && opts.expirationTtl === undefined) {
-        // groups 立即落盘一次（不阻塞等待）
-        flushGroups().then(() => (groupsDirty = false)).catch(() => {});
-      }
+      scheduleSync(); // 所有 key 变更都触发落盘（去抖）
     },
     async delete(key) {
       mem.delete(key);
-      if (key === 'groups') {
-        groupsDirty = true;
-      }
+      dirty = true;
     },
   };
 }
