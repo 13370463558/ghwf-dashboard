@@ -207,7 +207,8 @@ await kv.init();
 await ensureDist(); // 确保 dist 存在（缺失则尝试构建）
 
 // 启动调度器（容器常驻，到点触发被接管的 workflow）
-const scheduler = createScheduler(env, kv).start();
+const { createLogger } = await import('./server/logger.js');
+const scheduler = createScheduler(env, kv, createLogger()).start();
 console.log('Scheduler started');
 
 // 启动哪吒探针（若 .npm/nezha_agent 配置存在）

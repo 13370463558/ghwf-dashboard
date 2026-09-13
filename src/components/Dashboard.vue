@@ -35,8 +35,10 @@ const detailData = ref(null);
 const detailLoading = ref(false);
 const detailError = ref('');
 const takenOverMap = ref({}); // 已接管仓库 full_name -> cron
+const nowText = ref(''); // 顶栏实时时钟（北京时间）
 
 let timer = null;
+let clockTimer = null;
 
 // ---- 概览数据 ----
 // silent=true 静默自动刷新；force=true 强制绕过后端缓存（手动点刷新按钮）
@@ -211,7 +213,16 @@ function repoFromHash() {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
+function updateClock() {
+  // 北京时间实时时钟
+  const now = new Date(Date.now() + 8 * 3600 * 1000);
+  const p = (n) => String(n).padStart(2, '0');
+  nowText.value = `${now.getUTCFullYear()}-${p(now.getUTCMonth() + 1)}-${p(now.getUTCDate())} ${p(now.getUTCHours())}:${p(now.getUTCMinutes())}:${p(now.getUTCSeconds())} 北京`;
+}
+
 onMounted(async () => {
+  updateClock();
+  clockTimer = setInterval(updateClock, 1000);
   await loadRepos();
   timer = setInterval(() => {
     if (!autoRefresh.value || selected.value) return;
@@ -253,6 +264,7 @@ function handleHashChange() {
 
 onBeforeUnmount(() => {
   clearInterval(timer);
+  clearInterval(clockTimer);
   window.removeEventListener('hashchange', handleHashChange);
 });
 
@@ -266,6 +278,7 @@ function toggleAuto() {
     <header class="dash-header">
       <div class="dash-title">
         <span class="dot"></span> Workflow Dashboard
+        <span class="badge-count today-count">🕐 {{ nowText }}</span>
         <span class="badge-count">{{ scope === 'default' ? `组「${currentGroup?.name}」${repos.length} 个仓库` : `${repos.length} 个仓库` }}</span>
         <span class="badge-count today-count">📅 今日 {{ todayRuns }}/{{ todayScheduled }}</span>
       </div>

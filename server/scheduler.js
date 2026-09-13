@@ -20,9 +20,13 @@ const RUNS_URL = (owner, repo) =>
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export function createScheduler(env, kv) {
+export function createScheduler(env, kv, logger) {
   let timer = null;
   let running = false;
+
+  // 日志：优先用传入的 logger（带时间戳+写文件），否则降级 console
+  const log = logger?.log || ((m) => console.log(m));
+  const logErr = logger?.error || ((m) => console.error(m));
 
   // 配置（从 env，带默认）
   const confirmDelayMs = Number(env.SCHED_CONFIRM_DELAY || 15) * 1000; // dispatch 后确认延时，默认 15s
@@ -96,7 +100,7 @@ export function createScheduler(env, kv) {
   // 发 Telegram 通知（若已配置）
   async function sendTelegram(text) {
     if (!tgToken || !tgChatId) {
-      console.log(`[scheduler][tg] 未配置 TG_BOT_TOKEN/TG_CHAT_ID，跳过通知: ${text}`);
+      log(`[scheduler][tg] 未配置 TG_BOT_TOKEN/TG_CHAT_ID，跳过通知: ${text}`);
       return;
     }
     try {
@@ -106,7 +110,7 @@ export function createScheduler(env, kv) {
         body: JSON.stringify({ chat_id: tgChatId, text, disable_web_page_preview: true }),
       });
     } catch (e) {
-      console.error('[scheduler][tg] 通知失败:', e.message);
+      logErr('[scheduler][tg] 通知失败:', e.message);
     }
   }
 
@@ -125,7 +129,7 @@ export function createScheduler(env, kv) {
       }
       if (!dOk) {
         lastErr = lastErr || `dispatch HTTP 非 2xx`;
-        console.log(`[scheduler] ${repo} 尝试${attempt}/${maxRetries} dispatch 失败: ${lastErr}`);
+        log(`[scheduler] ${repo} 尝试${attempt}/${maxRetries} dispatch 失败: ${lastErr}`);
         if (attempt < maxRetries) await sleep(Math.min(30000, 2000 * attempt)); // 退避
         continue;
       }
@@ -139,11 +143,11 @@ export function createScheduler(env, kv) {
         lastErr = e.message;
       }
       if (confirmed) {
-        console.log(`[scheduler] ${repo} dispatch+确认成功 (尝试${attempt})`);
+        log(`[scheduler] ${repo} dispatch+确认成功 (尝试${attempt})`);
         return { ok: true };
       }
       lastErr = `dispatch 后 ${confirmDelayMs / 1000}s 未确认到新 run`;
-      console.log(`[scheduler] ${repo} 尝试${attempt}/${maxRetries} 未确认入队`);
+      log(`[scheduler] ${repo} 尝试${attempt}/${maxRetries} 未确认入队`);
       if (attempt < maxRetries) await sleep(Math.min(30000, 2000 * attempt));
     }
 
@@ -168,7 +172,7 @@ export function createScheduler(env, kv) {
         if (!workflowId) {
           // 找不到 workflow（wfdata 缓存缺失/路径不符）：更新 last_trigger 避免每 tick 重试风暴
           // 记录原因供诊断，等待 wfdata 缓存刷新后下次 cron 周期再试
-          console.log(`[scheduler] ${repo} 找不到 workflow (${cfg.workflow_path})，标记本轮跳过`);
+          log(`[scheduler] ${repo} 找不到 workflow (${cfg.workflow_path})，标记本轮跳过`);
           cfg.last_trigger = now;
           cfg.last_result = 'not_found';
           cfg.last_attempt_at = new Date(now).toISOString();
@@ -185,7 +189,7 @@ export function createScheduler(env, kv) {
       }
       await kv.put(STATE_KEY, JSON.stringify(state));
     } catch (e) {
-      console.error('[scheduler] tick error:', e.message);
+      logErr('[scheduler] tick error:', e.message);
     } finally {
       running = false;
     }
