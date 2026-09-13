@@ -42,12 +42,31 @@ export function createScheduler(env, kv, logger) {
     return { repos: {}, global_interval_minutes: 5 };
   }
 
-  // 通过 workflow_path 找 workflow id（读 wfdata 缓存）
+  // 通过 workflow_path 找 workflow id
+  // 优先读 wfdata 缓存；缓存缺/找不到时直接调 GitHub API（避免缓存过期导致误判"找不到"）
   async function findWorkflowId(repo, workflowPath) {
+    const [owner, repoName] = repo.split('/');
+    // 1) 缓存找
     try {
       const wfData = JSON.parse((await kv.get(`wfdata:v2:${repo}`)) || 'null');
       if (wfData?.workflows) {
         const w = wfData.workflows.find((x) => x.path === workflowPath);
+        if (w) return w.id;
+      }
+    } catch { /* ignore */ }
+
+    // 2) 缓存缺/找不到 → 直接问 GitHub（最可靠，不依赖可能过期的缓存）
+    try {
+      const res = await fetch(`https://api.github.com/repos/${owner}/${repoName}/actions/workflows?per_page=100`, {
+        headers: {
+          Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+          Accept: 'application/vnd.github+json',
+          'User-Agent': 'ghwf-dashboard-scheduler',
+        },
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const w = (data.workflows || []).find((x) => x.path === workflowPath);
         if (w) return w.id;
       }
     } catch { /* ignore */ }
@@ -170,9 +189,10 @@ export function createScheduler(env, kv, logger) {
 
         const workflowId = await findWorkflowId(repo, cfg.workflow_path);
         if (!workflowId) {
-          // 找不到 workflow（wfdata 缓存缺失/路径不符）：更新 last_trigger 避免每 tick 重试风暴
-          // 记录原因供诊断，等待 wfdata 缓存刷新后下次 cron 周期再试
+          // 找不到 workflow：更新 last_trigger 防重试风暴 + 发 TG 通知（GitHub 和缓存都确认没有）
           log(`[scheduler] ${repo} 找不到 workflow (${cfg.workflow_path})，标记本轮跳过`);
+          const msg = `⚠️ 调度触发失败\n仓库: ${repo}\n原因: 找不到 workflow（${cfg.workflow_path}）\n请确认该 workflow 未被删除或重命名`;
+          await sendTelegram(msg);
           cfg.last_trigger = now;
           cfg.last_result = 'not_found';
           cfg.last_attempt_at = new Date(now).toISOString();
