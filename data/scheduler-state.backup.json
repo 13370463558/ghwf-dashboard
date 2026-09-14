@@ -1,0 +1,60 @@
+{
+  "backed_up_at": "2026-09-14T07:28:41.029Z",
+  "state": {
+    "repos": {
+      "13370463558/Auto-Renew-HidenCloud": {
+        "cron": "0 2,10 * * 5",
+        "workflow_path": ".github/workflows/renew.yml",
+        "interval_minutes": 5,
+        "taken_over": true,
+        "last_trigger": 1789221151216
+      },
+      "13370463558/Auto-checkin-iamhc": {
+        "cron": "30 1 * * *",
+        "workflow_path": ".github/workflows/checkin.yml",
+        "interval_minutes": 5,
+        "taken_over": true,
+        "last_trigger": 1789349511454,
+        "last_result": "success",
+        "last_attempt_at": "2026-09-14T01:31:51.454Z"
+      },
+      "13370463558/zampto": {
+        "cron": "0 2 * * *",
+        "workflow_path": ".github/workflows/zampto.yml",
+        "interval_minutes": 5,
+        "taken_over": true,
+        "last_trigger": 1789351311750,
+        "last_result": "success",
+        "last_attempt_at": "2026-09-14T02:01:51.750Z"
+      },
+      "13370463558/ktbRENEW": {
+        "cron": "45 0,8 * * *",
+        "workflow_path": ".github/workflows/renew.yml",
+        "interval_minutes": 2,
+        "taken_over": true,
+        "last_trigger": 1789346811005,
+        "last_result": "success",
+        "last_attempt_at": "2026-09-14T00:46:51.005Z"
+      },
+      "13370463558/servercheckin": {
+        "cron": "0 20,6 * * *",
+        "workflow_path": ".github/workflows/rainyun-sign.yml",
+        "interval_minutes": 2,
+        "taken_over": true,
+        "last_trigger": 1789365714049,
+        "last_result": "success",
+        "last_attempt_at": "2026-09-14T06:01:54.049Z"
+      },
+      "13370463558/Auto-Renew-Bothosting": {
+        "cron": "0 1 * * *",
+        "workflow_path": ".github/workflows/renew.yml",
+        "interval_minutes": 2,
+        "taken_over": true,
+        "last_trigger": 1789347711149,
+        "last_result": "success",
+        "last_attempt_at": "2026-09-14T01:01:51.149Z"
+      }
+    },
+    "global_interval_minutes": 3
+  }
+}
