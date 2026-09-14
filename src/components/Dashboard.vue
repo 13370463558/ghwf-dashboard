@@ -5,6 +5,7 @@ import WorkflowList from './WorkflowList.vue';
 import GroupManager from './GroupManager.vue';
 import TimeChart from './TimeChart.vue';
 import SchedulerGlobalModal from './SchedulerGlobalModal.vue';
+import SchedulerLog from './SchedulerLog.vue';
 import { isBeijingToday } from '../lib/format.js';
 import { api } from '../lib/api.js';
 
@@ -29,6 +30,7 @@ const cronProgress = ref('');
 
 const showGroupManager = ref(false);
 const showSchedulerGlobal = ref(false);
+const showSchedulerLog = ref(false);
 
 const selected = ref(null); // 当前查看的仓库
 const detailData = ref(null);
@@ -291,6 +293,7 @@ function toggleAuto() {
           {{ refreshing ? '刷新中…' : '🔄 刷新' }}
         </button>
         <button @click="openManager">🗂️ 管理分组</button>
+        <button @click="showSchedulerLog = true">📋 调度日志</button>
         <button @click="openSchedulerGlobal">⚙️ 调度设置</button>
         <button @click="emit('logout')">退出登录</button>
       </div>
@@ -345,5 +348,6 @@ function toggleAuto() {
 
     <GroupManager v-if="showGroupManager" @saved="onGroupsSaved" @close="showGroupManager = false" />
     <SchedulerGlobalModal v-if="showSchedulerGlobal" @changed="onSchedulerChanged" @close="showSchedulerGlobal = false" />
+    <SchedulerLog v-if="showSchedulerLog" @close="showSchedulerLog = false" />
   </div>
 </template>

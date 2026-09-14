@@ -51,6 +51,73 @@ export async function writeWorkflowFile(env, fullName, path, content, sha, messa
 //                    避免留下空 `schedule:` 导致 GitHub 解析报错（422 "Unexpected value ''"）
 //   取消接管(untakeover)：取消注释整个 schedule 块
 //   改cron(setcron)：只改 schedule 内 cron 的值（未接管时）
+//
+// ensureWorkflowDispatch(content)：on: 块内没有 workflow_dispatch 时自动插入（接管前提：
+//   GitHub 只有配了 workflow_dispatch 的 workflow 才能被 API dispatch，否则接管后必然 422 失败风暴）
+export function ensureWorkflowDispatch(content) {
+  const lines = content.split(/\r?\n/);
+  const out = [];
+  let onLineIdx = -1; // 'on:' 行位置
+  let onIndent = 0; // on: 的缩进
+  let hasWorkflowDispatch = false; // 未注释的 workflow_dispatch 键
+  let workflowIndent = null; // on: 下一级键的缩进（用于插入对齐）
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    const indent = line.match(/^\s*/)[0].length;
+
+    // 找到 on: 行（未注释；兼容 'on' 与 on 两种写法）
+    if (onLineIdx === -1 && (/^on\s*:/.test(trimmed) || /^'on'\s*:/.test(trimmed)) && !trimmed.startsWith('#')) {
+      onLineIdx = i;
+      onIndent = indent;
+      out.push(line);
+      continue;
+    }
+
+    if (onLineIdx !== -1) {
+      // on: 块内：遇到缩进 <= on: 且非空非注释的行 → on 块结束
+      if (trimmed !== '' && !trimmed.startsWith('#') && indent <= onIndent) {
+        // on 块结束前若还没插入，在这之前补（保持 workflow_dispatch 在 on 块内的缩进）
+        if (!hasWorkflowDispatch) {
+          const wdIndent = workflowIndent !== null ? workflowIndent : onIndent + 2;
+          out.push(' '.repeat(wdIndent) + 'workflow_dispatch:');
+        }
+        out.push(line);
+        onLineIdx = -2; // 标记已处理完毕
+        continue;
+      }
+      // 记录 on: 下一级的缩进（第一个子键）
+      if (workflowIndent === null && trimmed !== '' && indent > onIndent) {
+        workflowIndent = indent;
+      }
+      // 检测 workflow_dispatch 键（未注释；schedule 注释行里的 workflow_dispatch 也算——已注释的 schedule 块不覆盖它）
+      if (/^(workflow_dispatch|#\s*workflow_dispatch)\s*:/.test(trimmed)) {
+        // 已注释的 # workflow_dispatch: → 取消注释（激活）
+        if (trimmed.startsWith('#')) {
+          out.push(line.replace(/^(\s*)#\s?/, '$1'));
+          hasWorkflowDispatch = true;
+          continue;
+        }
+        hasWorkflowDispatch = true;
+      }
+      out.push(line);
+      continue;
+    }
+
+    out.push(line);
+  }
+
+  // on: 块是文件末尾（没有遇到结束行）→ 追加在末尾
+  if (onLineIdx !== -2 && onLineIdx !== -1 && !hasWorkflowDispatch) {
+    const wdIndent = workflowIndent !== null ? workflowIndent : onIndent + 2;
+    out.push(' '.repeat(wdIndent) + 'workflow_dispatch:');
+  }
+
+  return out.join('\n');
+}
+
+// 行级操作 schedule 区块（原逻辑）
 export function operateSchedule(content, action, newCron) {
   const lines = content.split(/\r?\n/);
   const out = [];

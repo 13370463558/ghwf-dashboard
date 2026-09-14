@@ -51,5 +51,6 @@ export const api = {
   cron: (repo, force = false) => request(`/api/cron?repo=${encodeURIComponent(repo)}${force ? '&force=1' : ''}`),
   schedulerState: () => request('/api/scheduler'),
   scheduler: (data) => request('/api/scheduler', { method: 'POST', body: JSON.stringify(data) }),
+  schedulerLog: () => request('/api/schedulerLog'),
   cronPreview: (cron) => request(`/api/cronPreview?cron=${encodeURIComponent(cron)}`),
 };

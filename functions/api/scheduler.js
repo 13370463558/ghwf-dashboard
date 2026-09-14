@@ -7,7 +7,8 @@
 //   }
 import { json } from '../lib/http.js';
 import { CronExpressionParser } from 'cron-parser';
-import { readWorkflowFile, writeWorkflowFile, operateSchedule, validateCron } from '../lib/yaml.js';
+import { readWorkflowFile, writeWorkflowFile, operateSchedule, ensureWorkflowDispatch, validateCron } from '../lib/yaml.js';
+import { backupSchedulerState, restoreSchedulerStateFromBackup } from '../lib/schedBackup.js';
 
 const STATE_KEY = 'scheduler:state';
 
@@ -22,6 +23,8 @@ async function getState(env) {
 async function saveState(env, state) {
   // 调度表永久存储，不设 TTL（避免被过期清掉）
   await env.CACHE?.put(STATE_KEY, JSON.stringify(state));
+  // 异步异地备份（不阻塞响应；失败静默，不影响主数据）
+  backupSchedulerState(env, state).catch(() => {});
 }
 
 // cron 深度校验：用 cron-parser 试着解析，能解析即合法
@@ -35,7 +38,25 @@ function cronValid(cron) {
 }
 
 export async function onRequestGet(context) {
-  const { env } = context;
+  const { env, request } = context;
+  const url = new URL(request.url);
+
+  // 从备份仓库恢复调度表：GET /api/scheduler?restore=1
+  // 场景：容器磁盘损坏/kv.json 丢失 → 调度表为空，从这里拉回备份
+  if (url.searchParams.get('restore') === '1') {
+    try {
+      const backup = await restoreSchedulerStateFromBackup(env);
+      if (!backup || !backup.repos || !Object.keys(backup.repos).length) {
+        return json({ error: '备份仓库中没有可恢复的调度表（或未配置 SCHED_BACKUP_REPO）' }, 404);
+      }
+      await env.CACHE?.put(STATE_KEY, JSON.stringify(backup));
+      backupSchedulerState(env, backup).catch(() => {});
+      return json({ ok: true, restored: Object.keys(backup.repos).length });
+    } catch (e) {
+      return json({ error: `恢复失败: ${e.message}` }, 502);
+    }
+  }
+
   const state = await getState(env);
   return json({
     state: {
@@ -71,19 +92,22 @@ export async function onRequestPost(context) {
     return json({ error: '需要 workflow_path（如 .github/workflows/xx.yml）' }, 400);
   }
 
-  // 接管：读文件 → 注释 schedule → 写回 → 存调度表
+  // 接管：读文件 → 补 workflow_dispatch（若缺）→ 注释 schedule → 写回 → 存调度表
   if (job === 'takeover') {
     if (!cron || !cronValid(cron)) return json({ error: 'cron 非法，需为 5 段标准 cron' }, 400);
     try {
       const { content, sha } = await readWorkflowFile(env, repo, workflow_path);
-      const newContent = operateSchedule(content, 'takeover', cron);
-      if (newContent === content) {
+      // 1) 先确保 on: 块里有 workflow_dispatch（没有的话 dispatch 必然 422，接管毫无意义）
+      const withDispatch = ensureWorkflowDispatch(content);
+      // 2) 再注释整个 schedule 块
+      const newContent = operateSchedule(withDispatch, 'takeover', cron);
+      if (newContent === withDispatch) {
         return json({ error: '未检测到可注释的 schedule，可能该 workflow 无 on.schedule' }, 400);
       }
-      await writeWorkflowFile(env, repo, workflow_path, newContent, sha, `chore: takeover schedule (${repo}) - disable GitHub cron, use scheduler`);
+      await writeWorkflowFile(env, repo, workflow_path, newContent, sha, `chore: takeover schedule (${repo}) - disable GitHub cron, use scheduler${withDispatch !== content ? ' + add workflow_dispatch' : ''}`);
       state.repos[repo] = { cron, workflow_path, interval_minutes: state.global_interval_minutes ?? 5, taken_over: true, last_trigger: Date.now() };
       await saveState(env, state);
-      return json({ ok: true, state: state.repos[repo] });
+      return json({ ok: true, state: state.repos[repo], added_dispatch: withDispatch !== content });
     } catch (e) {
       return json({ error: `接管失败: ${e.message}` }, 502);
     }
