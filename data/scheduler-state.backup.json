@@ -1,5 +1,5 @@
 {
-  "backed_up_at": "2026-09-15T01:32:00.428Z",
+  "backed_up_at": "2026-09-15T01:55:35.961Z",
   "state": {
     "repos": {
       "13370463558/Auto-Renew-HidenCloud": {
@@ -53,6 +53,13 @@
         "last_trigger": 1789434110105,
         "last_result": "success",
         "last_attempt_at": "2026-09-15T01:01:50.105Z"
+      },
+      "13370463558/freemchost-renew": {
+        "cron": "15 12 * * *",
+        "workflow_path": ".github/workflows/freemchost.yml",
+        "interval_minutes": 3,
+        "taken_over": true,
+        "last_trigger": 1789437335956
       }
     },
     "global_interval_minutes": 3
