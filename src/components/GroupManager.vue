@@ -7,7 +7,7 @@ const emit = defineEmits(['saved', 'close']);
 
 const groups = ref([]);
 const defaultGroupId = ref(null);
-const allRepos = ref([]); // 全部仓库（勾选用，来自 /api/repos?all=1）
+const allRepos = ref([]); // 有工作流的仓库（勾选用，来自 /api/repos?all=1 过滤后）
 const currentId = ref(null); // 左侧当前选中组
 const search = ref('');
 const loading = ref(true);
@@ -49,7 +49,10 @@ async function load() {
     const [g, r] = await Promise.all([api.groups(), api.reposAll()]);
     groups.value = g.groups || [];
     defaultGroupId.value = g.defaultGroupId || null;
-    allRepos.value = r.repos || [];
+    // 只允许勾选有工作流的仓库（workflows 非空），没有 workflow 文件的仓库不显示
+    allRepos.value = (r.repos || []).filter(
+      (repo) => Array.isArray(repo.workflows) && repo.workflows.length > 0
+    );
     if (!currentId.value || !groups.value.some((x) => x.id === currentId.value)) {
       currentId.value = groups.value[0]?.id || null;
     }
@@ -101,7 +104,13 @@ async function save() {
   saving.value = true;
   error.value = '';
   try {
-    const result = await api.saveGroups({ groups: groups.value, defaultGroupId: defaultGroupId.value });
+    // 保存前按"有工作流"的仓库集合过滤一遍，清掉组里已无工作流的历史遗留仓库
+    const validRepos = new Set(allRepos.value.map((r) => r.full_name));
+    const cleanGroups = groups.value.map((g) => ({
+      ...g,
+      repos: (g.repos || []).filter((name) => validRepos.has(name)),
+    }));
+    const result = await api.saveGroups({ groups: cleanGroups, defaultGroupId: defaultGroupId.value });
     groups.value = result.groups;
     defaultGroupId.value = result.defaultGroupId;
     emit('saved', result);
