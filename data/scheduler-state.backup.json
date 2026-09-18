@@ -1,5 +1,5 @@
 {
-  "backed_up_at": "2026-09-18T02:01:28.910Z",
+  "backed_up_at": "2026-09-18T02:12:10.099Z",
   "state": {
     "repos": {
       "13370463558/Auto-Renew-HidenCloud": {
@@ -21,7 +21,7 @@
         "last_attempt_at": "2026-09-18T01:31:18.489Z"
       },
       "13370463558/zampto": {
-        "cron": "0 2 * * *",
+        "cron": "10 2 * * *",
         "workflow_path": ".github/workflows/zampto.yml",
         "interval_minutes": 5,
         "taken_over": true,
