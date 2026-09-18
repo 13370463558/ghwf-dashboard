@@ -1,5 +1,5 @@
 {
-  "backed_up_at": "2026-09-18T02:12:10.099Z",
+  "backed_up_at": "2026-09-18T06:01:31.066Z",
   "state": {
     "repos": {
       "13370463558/Auto-Renew-HidenCloud": {
@@ -25,9 +25,9 @@
         "workflow_path": ".github/workflows/zampto.yml",
         "interval_minutes": 5,
         "taken_over": true,
-        "last_trigger": 1789696878729,
+        "last_trigger": 1789697598826,
         "last_result": "success",
-        "last_attempt_at": "2026-09-18T02:01:18.729Z"
+        "last_attempt_at": "2026-09-18T02:13:18.826Z"
       },
       "13370463558/ktbRENEW": {
         "cron": "45 0,8 * * *",
@@ -43,9 +43,9 @@
         "workflow_path": ".github/workflows/rainyun-sign.yml",
         "interval_minutes": 2,
         "taken_over": true,
-        "last_trigger": 1789675275172,
+        "last_trigger": 1789711280573,
         "last_result": "success",
-        "last_attempt_at": "2026-09-17T20:01:15.172Z"
+        "last_attempt_at": "2026-09-18T06:01:20.573Z"
       },
       "13370463558/Auto-Renew-Bothosting": {
         "cron": "0 1 * * *",
