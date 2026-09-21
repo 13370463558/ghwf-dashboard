@@ -1,5 +1,5 @@
 {
-  "backed_up_at": "2026-09-21T12:15:40.518Z",
+  "backed_up_at": "2026-09-21T20:00:45.736Z",
   "state": {
     "repos": {
       "13370463558/Auto-Renew-HidenCloud": {
@@ -43,9 +43,9 @@
         "workflow_path": ".github/workflows/rainyun-sign.yml",
         "interval_minutes": 2,
         "taken_over": true,
-        "last_trigger": 1789970425893,
+        "last_trigger": 1790020835172,
         "last_result": "success",
-        "last_attempt_at": "2026-09-21T06:00:25.893Z"
+        "last_attempt_at": "2026-09-21T20:00:35.172Z"
       },
       "13370463558/Auto-Renew-Bothosting": {
         "cron": "0 1 * * *",
