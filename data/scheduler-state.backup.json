@@ -1,16 +1,7 @@
 {
-  "backed_up_at": "2026-11-10T23:00:18.505Z",
+  "backed_up_at": "2026-11-11T08:34:57.588Z",
   "state": {
     "repos": {
-      "13370463558/Lunes": {
-        "cron": "30 4 * * 6",
-        "workflow_path": ".github/workflows/Lunes-Keep.yml",
-        "interval_minutes": 5,
-        "taken_over": true,
-        "last_trigger": 1794026095661,
-        "last_result": "success",
-        "last_attempt_at": "2026-11-07T04:34:55.661Z"
-      },
       "13370463558/Auto-Renew-AclClouds": {
         "cron": "0 23 */3 * *",
         "workflow_path": ".github/workflows/renew.yml",
